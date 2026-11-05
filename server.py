@@ -321,10 +321,7 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             with open(os.path.join(ROOT, "index.html"), "rb") as f:
                 body = f.read()
-            if TOKEN:
-                body = body.replace(b"__INSTR_TOKEN__", json.dumps(TOKEN).encode())
-            else:
-                body = body.replace(b"__INSTR_TOKEN__", b'""')
+            body = body.replace(b"__INSTR_TOKEN__", json.dumps(TOKEN).encode())
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -353,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
                               else "no token — anyone can write"),
                              (b"__TOKENNOTE__", note)):
                 body = body.replace(key, esc(val))
-            body = body.replace(b"__INSTR_TOKEN__", json.dumps(TOKEN).encode() if TOKEN else b'""')
+            body = body.replace(b"__INSTR_TOKEN__", json.dumps(TOKEN).encode())
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

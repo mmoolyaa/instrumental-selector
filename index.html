@@ -195,7 +195,7 @@
 </div>
 <script>
 const $ = s => document.querySelector(s);
-const TOKEN = "__INSTR_TOKEN__";                 // filled in by the server when INSTR_TOKEN is set
+const TOKEN = __INSTR_TOKEN__;                 // filled in by the server when INSTR_TOKEN is set
 const AUTH = TOKEN ? { 'X-Instr-Token': TOKEN } : {};
 const state = { rows:[], sel:null, jid:null, timer:null, t0:0, deb:null };
 const PALETTE = ['#F4415F','#F0B429','#2FC3A0','#7C5CFF','#F4633A','#3B82F6'];

@@ -124,7 +124,7 @@ window.addEventListener('error', e => {
   const el = document.getElementById('save_err');
   if (el) el.textContent = 'JS error: ' + e.message;
 });
-const TOKEN = "__INSTR_TOKEN__";
+const TOKEN = __INSTR_TOKEN__;
 const AUTH = TOKEN ? { 'X-Instr-Token': TOKEN } : {};
 const api = (path, opts={}) => fetch(path, Object.assign({}, opts,
   { headers: Object.assign({}, AUTH, opts.headers || {}) }));

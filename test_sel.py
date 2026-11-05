@@ -72,6 +72,14 @@ def settings_test(tmp, lib):
     s2 = json.loads(req("/api/settings")[1])
     assert s2["ttl_hours"] == 48 and s2["model"] == "custom.onnx", s2
     assert os.path.isfile(os.path.join(tmp, "config.json")), "settings must persist"
+
+    # regression: the server injects `const TOKEN = "...";` — a naive replace once
+    # produced `""""`, which killed the whole inline script (no stats, no search).
+    for page in ("/", "/settings"):
+        html = req(page)[1].decode()
+        assert "__INSTR_TOKEN__" not in html, f"placeholder left in {page}"
+        assert '""""' not in html, f"broken token literal in {page}"
+        assert 'const TOKEN = "";' in html, f"token literal malformed in {page}"
     print("settings assertions passed")
 
 
