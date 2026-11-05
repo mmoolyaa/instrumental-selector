@@ -34,7 +34,7 @@ Stem separation is CPU-hungry: a 2012-era 4-thread i3 needed **~28 min** for a 6
 ## Server setup
 
 ```bash
-git clone https://github.com/<you>/instrumental-selector.git
+git clone https://github.com/mmoolyaa/instrumental-selector.git
 cd instrumental-selector
 cp .env.example .env          # then edit INSTR_LIB / INSTR_MUSIC
 set -a; . ./.env; set +a
