@@ -61,6 +61,29 @@ systemctl --user enable --now instrumental-selector
 
 Put it behind a reverse proxy (see `deploy/Caddyfile.example`) if you want a hostname.
 
+## Docker
+
+```bash
+git clone https://github.com/mmoolyaa/instrumental-selector.git
+cd instrumental-selector
+docker compose up -d --build
+```
+
+`compose.yml` mounts your Navidrome data dir and music folder read-only, and keeps
+`config.json`, the cache and the job queue in a named volume that survives rebuilds.
+Override the paths if yours differ:
+
+```bash
+NAVIDROME_DATA=/path/to/navidrome NAVIDROME_MUSIC=/path/to/music docker compose up -d
+```
+
+Open `http://localhost:8899`. A fresh install shows a banner naming the exact missing
+path, with a button to the settings page — not an empty dashboard. Health lives at
+`GET /api/health` and is what the container healthcheck polls.
+
+The image is the **server only** (~180 MB, stdlib, no model). The worker still runs on
+your own machine: a torch image is 1.4 GB to do the same job.
+
 ## Worker setup
 
 ```bash
@@ -114,7 +137,8 @@ On Windows, copy `deploy/start-worker.bat` next to `worker.py`, edit `INSTR_SERV
 |---|---|---|
 | GET | `/` | UI |
 | GET | `/api/tracks?q=` | Search (`missing=0` only) |
-| GET | `/api/stats` | Library/cache/queue/worker counters |
+| GET | `/api/stats` | Library/cache/queue/worker counters (+ `configured`, `hint`) |
+| GET | `/api/health` | Liveness and library status for healthchecks |
 | GET | `/api/cached` | Recently finished instrumentals |
 | POST | `/api/jobs` `{id}` | Queue a track (idempotent, cache-aware) |
 | GET | `/api/job/<jid>` | `queued` / `running` / `done` / `failed` |

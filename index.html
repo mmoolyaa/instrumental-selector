@@ -129,6 +129,15 @@
   .btn.ghost:hover { background:#F1F0ED; }
   .btn:disabled { opacity:.45; cursor:default; }
 
+  /* first-run / not-configured banner */
+  .setup { display:none; align-items:center; gap:14px; justify-content:space-between;
+           flex-wrap:wrap; background:#FFF6F2; border:1px solid #F6D6C9;
+           border-radius:14px; padding:14px 16px; margin:0 0 14px; }
+  .setup.on { display:flex; }
+  .setup b { font-size:13px; }
+  .setup .why { display:block; color:#8A5A45; font-size:12px; margin-top:3px;
+                font-family:ui-monospace,SFMono-Regular,Menlo,monospace; word-break:break-all; }
+
   @media (max-width:640px){
     .wrap { padding:24px 16px 0; }
     h1 { font-size:24px; }
@@ -152,6 +161,14 @@
     <div class="stat"><div class="lab">Cached</div><div class="val" id="sCached">—</div><div class="cap">instrumentals ready</div></div>
     <div class="stat"><div class="lab">Queue</div><div class="val" id="sQueue">—</div><div class="cap" id="sQueueCap">waiting</div></div>
     <div class="stat"><div class="lab">Worker</div><div class="val" id="sWorker">—</div><div class="cap" id="sWorkerCap">laptop</div></div>
+  </div>
+
+  <div class="setup" id="setup">
+    <div>
+      <b>No music library connected yet.</b>
+      <span class="why" id="setupWhy"></span>
+    </div>
+    <a class="btn primary" href="/settings">Open settings</a>
   </div>
 
   <div class="search">
@@ -208,7 +225,20 @@ const colorFor = name => PALETTE[[...(name||'x')].reduce((a,c)=>a+c.charCodeAt(0
 async function loadStats(){
   try {
     const s = await (await fetch('/api/stats')).json();
-    $('#sTracks').textContent = s.tracks.toLocaleString();
+    const ready = s.configured !== false;
+    $('#setup').classList.toggle('on', !ready);
+    if (!ready) {
+      $('#setupWhy').textContent = s.hint || 'check the paths in settings';
+      $('.search').style.display = 'none';
+      $('#hintline').style.display = 'none';
+      $('#recentWrap').style.display = 'none';
+      $('#q').disabled = true;
+    } else {
+      $('.search').style.display = '';
+      $('#hintline').style.display = '';
+      $('#q').disabled = false;
+    }
+    $('#sTracks').textContent = ready ? s.tracks.toLocaleString() : '—';
     $('#sCached').textContent = s.cached;
     $('#sQueue').textContent = s.queued + s.running;
     $('#sQueue').className = 'val' + (s.queued + s.running ? ' warn' : '');

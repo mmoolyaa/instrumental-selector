@@ -1,0 +1,29 @@
+services:
+  server:
+    build: .
+    image: instrumental-selector:latest
+    container_name: instrumental-selector
+    restart: unless-stopped
+    ports:
+      - "8899:8899"
+    environment:
+      # Uncomment to require a shared secret for writes + worker endpoints.
+      # INSTR_TOKEN: change-me
+      INSTR_LEASE_MINUTES: "45"
+      INSTR_TTL_HOURS: "168"
+    volumes:
+      # Navidrome data dir (holds data/navidrome.db) and the folder it scans.
+      # Point these at your own install; both are mounted read-only.
+      - ${NAVIDROME_DATA:-/srv/data/navidrome}:/navidrome:ro
+      - ${NAVIDROME_MUSIC:-/srv/data/navidrome/music}:/music:ro
+      # config.json, cache and the job queue survive container rebuilds
+      - instr-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8899/api/health', timeout=4).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  instr-data:

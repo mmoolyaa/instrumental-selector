@@ -163,6 +163,41 @@ def durability_test(tmp):
     print("queue durability assertions passed")
 
 
+def onboarding_test(tmp):
+    """A fresh install with no library must explain itself, not 500."""
+    port = PORT + 9
+    base = f"http://127.0.0.1:{port}"
+    env = dict(os.environ, PORT=str(port), INSTR_LIB=os.path.join(tmp, "no-such-lib"),
+               INSTR_CACHE=os.path.join(tmp, "cache4"), INSTR_JOBS=os.path.join(tmp, "jobs4.json"),
+               INSTR_CONFIG=os.path.join(tmp, "config4.json"))
+    srv = subprocess.Popen([sys.executable, os.path.join(ROOT, "server.py")], env=env,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    try:
+        for _ in range(50):
+            try:
+                urllib.request.urlopen(base + "/api/health", timeout=2)
+                break
+            except Exception:
+                time.sleep(0.1)
+        else:
+            raise SystemExit("onboarding server did not start")
+
+        with urllib.request.urlopen(base + "/api/health", timeout=5) as r:
+            assert r.status == 200 and json.loads(r.read())["ok"] is True
+        with urllib.request.urlopen(base + "/api/stats", timeout=5) as r:
+            st = json.loads(r.read())
+        assert st["configured"] is False and st["tracks"] == 0, st
+        assert st["hint"], "the banner needs a reason to show"
+        with urllib.request.urlopen(base + "/api/tracks?q=x", timeout=5) as r:
+            assert json.loads(r.read()) == [], "unconfigured search must be empty, not an error"
+        with urllib.request.urlopen(base + "/", timeout=5) as r:
+            assert 'id="setup"' in r.read().decode(), "setup banner markup missing"
+        print("onboarding assertions passed")
+    finally:
+        srv.terminate()
+        srv.wait(timeout=10)
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="instr-test-")
     lib, src = make_lib(tmp)
@@ -241,6 +276,7 @@ def main():
         settings_test(tmp, lib)
         token_test(tmp)
         durability_test(tmp)
+        onboarding_test(tmp)
         return 0
     finally:
         srv.terminate()

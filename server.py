@@ -99,15 +99,44 @@ LAST_WORKER = 0.0
 LEASE_S = float(os.environ.get("INSTR_LEASE_MINUTES", "45")) * 60
 
 
+def library_status() -> tuple[bool, str]:
+    """Is the library actually usable right now? Returns (ok, reason-if-not).
+
+    Cheap enough to call per stats poll, and it is what the setup banner and
+    /api/health report — a fresh install with no config must say *why* it is
+    empty instead of dying with a traceback.
+    """
+    db_file = os.path.join(LIB, "data", "navidrome.db")
+    if not os.path.isdir(LIB):
+        return False, f"navidrome data dir not found: {LIB}"
+    if not os.path.isfile(db_file):
+        return False, f"navidrome.db not found in {os.path.join(LIB, 'data')}"
+    if not os.path.isdir(MUSIC):
+        return False, f"music dir not found: {MUSIC}"
+    try:
+        with db() as c:
+            c.execute("SELECT count(*) FROM media_file LIMIT 1").fetchone()
+    except sqlite3.Error as exc:
+        return False, f"cannot read navidrome.db: {exc}"
+    return True, ""
+
+
 def stats() -> dict:
-    with db() as c:
-        tracks = c.execute("SELECT count(*) FROM media_file WHERE missing=0").fetchone()[0]
+    ok, why = library_status()
+    tracks = 0
+    if ok:
+        try:
+            with db() as c:
+                tracks = c.execute("SELECT count(*) FROM media_file WHERE missing=0").fetchone()[0]
+        except sqlite3.Error as exc:
+            ok, why = False, f"cannot read navidrome.db: {exc}"
     with LOCK:
         queued = sum(1 for j in JOBS.values() if j["state"] == "queued")
         running = sum(1 for j in JOBS.values() if j["state"] == "running")
     cached_n = len([f for f in os.listdir(CACHE) if f.endswith(".mp3")]) if os.path.isdir(CACHE) else 0
     return {"tracks": tracks, "cached": cached_n, "queued": queued, "running": running,
-            "worker_online": (time.time() - LAST_WORKER) < 30}
+            "worker_online": (time.time() - LAST_WORKER) < 30,
+            "configured": ok, "hint": why}
 
 
 def db() -> sqlite3.Connection:
@@ -126,8 +155,11 @@ def search(q: str, limit: int = 50) -> list[dict]:
     else:
         sql = f"SELECT {cols} FROM media_file WHERE missing=0 ORDER BY id LIMIT ?"
         args = (limit,)
-    with db() as c:
-        rows = c.execute(sql, args).fetchall()
+    try:
+        with db() as c:
+            rows = c.execute(sql, args).fetchall()
+    except sqlite3.Error:                 # unconfigured install: empty, not a crash
+        return []
     return [{"id": r[0], "title": r[1], "artist": r[2], "album": r[3],
              "duration": round(r[4] or 0, 1)} for r in rows]
 
@@ -156,9 +188,12 @@ def _resolve_ci(base: str, rel: str) -> str | None:
 
 
 def media_info(media_id: str) -> dict | None:
-    with db() as c:
-        row = c.execute("SELECT title, artist, missing FROM media_file WHERE id=?",
-                        (media_id,)).fetchone()
+    try:
+        with db() as c:
+            row = c.execute("SELECT title, artist, missing FROM media_file WHERE id=?",
+                            (media_id,)).fetchone()
+    except sqlite3.Error:
+        return None
     if not row or row[2]:
         return None
     return {"title": row[0] or "track", "artist": row[1] or "unknown"}
@@ -172,8 +207,11 @@ def safe_name(media_id: str) -> str:
 
 def media_path(media_id: str) -> str | None:
     """Resolve a media_file id to an absolute path inside the library. Client never sends paths."""
-    with db() as c:
-        row = c.execute("SELECT path, missing FROM media_file WHERE id=?", (media_id,)).fetchone()
+    try:
+        with db() as c:
+            row = c.execute("SELECT path, missing FROM media_file WHERE id=?", (media_id,)).fetchone()
+    except sqlite3.Error:
+        return None
     if not row or row[1]:
         return None
     path = _resolve_ci(MUSIC, row[0])
@@ -334,6 +372,9 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if p == "/api/health":
+            ok, why = library_status()
+            return self._json({"ok": True, "configured": ok, "hint": why})
         if p == "/api/tracks":
             q = (parse_qs(u.query).get("q") or [""])[0]
             return self._json(search(q))

@@ -1,0 +1,13 @@
+.git
+.gitignore
+cache/
+models/
+*.mp3
+jobs.json
+config.json
+__pycache__/
+*.pyc
+.venv/
+docs/
+deploy/
+README.md
