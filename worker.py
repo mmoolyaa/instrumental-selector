@@ -69,13 +69,14 @@ def lufs(path):
     return float(found[-1]) if found else None
 
 
-def separate(src, workdir):
+def separate(src, workdir, model=None):
+    model = model or MODEL
     wav = os.path.join(workdir, "in.wav")
     run(["ffmpeg", "-v", "error", "-y", "-i", src, "-ar", "48000", "-ac", "2",
          "-c:a", "pcm_s16le", wav])
     outdir = os.path.join(workdir, "out")
     os.makedirs(outdir, exist_ok=True)
-    run([SEP, wav, "--model_filename", MODEL, "--output_format", "WAV",
+    run([SEP, wav, "--model_filename", model, "--output_format", "WAV",
          "--sample_rate", "48000", "--single_stem", "Instrumental",
          "--model_file_dir", MODELS, "--output_dir", outdir])
     stems = [os.path.join(outdir, f) for f in os.listdir(outdir) if f.lower().endswith(".wav")]
@@ -109,7 +110,7 @@ def main():
             try:
                 src = os.path.join(workdir, "source")
                 download(job["source_url"], src)
-                mp3 = separate(src, workdir)
+                mp3 = separate(src, workdir, job.get("model"))
                 with open(mp3, "rb") as f:
                     api(f"/api/worker/result/{jid}", raw=f.read())
                 print(f"[{time.strftime('%H:%M:%S')}] job {jid}: done", flush=True)

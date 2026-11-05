@@ -2,6 +2,7 @@
 """Instrumental Selector — search Navidrome's library, queue a vocal-removal job,
 serve the resulting MP3. Compute happens on the laptop worker, never here."""
 import hashlib
+import html
 import json
 import os
 import re
@@ -13,15 +14,82 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.environ.get("INSTR_CONFIG", os.path.join(ROOT, "config.json"))
+
+# Effective values — env first, then config.json (written by the settings page).
 LIB = os.environ.get("INSTR_LIB", "/srv/data/navidrome")
-# media_file.path is relative to Navidrome's music folder, not to the data root
-MUSIC = os.environ.get("INSTR_MUSIC", os.path.join(LIB, "music"))
-DB_URI = f"file:{LIB}/data/navidrome.db?mode=ro"
+MUSIC = ""            # media_file.path is relative to Navidrome's music folder
+DB_URI = ""
 CACHE = os.environ.get("INSTR_CACHE", os.path.join(ROOT, "cache"))
 JOBS_FILE = os.environ.get("INSTR_JOBS", os.path.join(ROOT, "jobs.json"))
 TTL_HOURS = float(os.environ.get("INSTR_TTL_HOURS", "168"))   # 7 days, then the mp3 is deleted
 TOKEN = os.environ.get("INSTR_TOKEN", "").strip()             # empty = no auth (LAN only)
+MODEL = os.environ.get("INSTR_MODEL", "UVR-MDX-NET-Inst_HQ_3.onnx")   # advertised to workers
 PORT = int(os.environ.get("PORT", "8899"))
+
+
+def load_config() -> dict:
+    try:
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def apply_config(cfg: dict) -> None:
+    """Config file wins over env; empty values fall through to env/defaults."""
+    global LIB, MUSIC, DB_URI, CACHE, TTL_HOURS, TOKEN, MODEL
+    LIB = cfg.get("lib") or os.environ.get("INSTR_LIB", "/srv/data/navidrome")
+    MUSIC = cfg.get("music") or os.environ.get("INSTR_MUSIC", os.path.join(LIB, "music"))
+    CACHE = cfg.get("cache") or os.environ.get("INSTR_CACHE", os.path.join(ROOT, "cache"))
+    TTL_HOURS = float(cfg.get("ttl_hours") or os.environ.get("INSTR_TTL_HOURS", "168"))
+    TOKEN = str(cfg.get("token") if cfg.get("token") is not None
+                else os.environ.get("INSTR_TOKEN", "")).strip()
+    MODEL = cfg.get("model") or os.environ.get("INSTR_MODEL", "UVR-MDX-NET-Inst_HQ_3.onnx")
+    DB_URI = f"file:{LIB}/data/navidrome.db?mode=ro"
+
+
+def save_config(cfg: dict) -> None:
+    tmp = CONFIG_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(cfg, f, indent=2, sort_keys=True)
+    os.replace(tmp, CONFIG_FILE)
+
+
+def probe_library(lib: str, music: str) -> dict:
+    """Checks the settings page can run before saving anything."""
+    out = {"lib_ok": False, "db_ok": False, "music_ok": False, "tracks": 0, "sample": None,
+           "errors": []}
+    if not os.path.isdir(lib):
+        out["errors"].append(f"library dir not found: {lib}")
+    else:
+        out["lib_ok"] = True
+    db_file = os.path.join(lib, "data", "navidrome.db")
+    if not os.path.isfile(db_file):
+        out["errors"].append(f"no navidrome.db under {os.path.join(lib, 'data')}")
+    else:
+        try:
+            with sqlite3.connect(f"file:{db_file}?mode=ro", uri=True, timeout=5) as c:
+                out["tracks"] = c.execute(
+                    "SELECT count(*) FROM media_file WHERE missing=0").fetchone()[0]
+                row = c.execute("SELECT path FROM media_file WHERE missing=0 LIMIT 1").fetchone()
+                out["db_ok"] = True
+                out["sample"] = row[0] if row else None
+        except sqlite3.Error as exc:
+            out["errors"].append(f"cannot read navidrome.db: {exc}")
+    if not os.path.isdir(music):
+        out["errors"].append(f"music dir not found: {music}")
+    else:
+        out["music_ok"] = True
+        if out["sample"]:
+            probe = _resolve_ci(music, out["sample"])
+            if probe and os.path.isfile(probe):
+                out["sample"] = probe
+            else:
+                out["errors"].append("DB paths do not resolve under the music dir — "
+                                     "check that it is the folder Navidrome scans")
+    out["ok"] = not out["errors"]
+    return out
 
 JOBS: dict[str, dict] = {}
 LOCK = threading.Lock()
@@ -177,7 +245,7 @@ def next_job() -> dict | None:
                     save_jobs()
                     continue
                 return {"jid": jid, "source_url": f"/api/worker/source/{jid}",
-                        "filename": os.path.basename(path)}
+                        "filename": os.path.basename(path), "model": MODEL}
     return None
 
 
@@ -269,6 +337,36 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(search(q))
         if p == "/api/stats":
             return self._json(stats())
+        if p == "/settings":
+            with open(os.path.join(ROOT, "settings.html"), "rb") as f:
+                body = f.read()
+
+            def esc(v) -> bytes:
+                return html.escape(str(v), quote=True).encode()
+
+            note = ("A token is set. Anyone with it can queue work and use the worker endpoints."
+                    if TOKEN else
+                    "No token set — fine on a trusted LAN, risky on a public address.")
+            for key, val in ((b"__LIB__", LIB), (b"__MUSIC__", MUSIC), (b"__CACHE__", CACHE),
+                             (b"__TTL__", f"{TTL_HOURS:g}"), (b"__MODEL__", MODEL),
+                             (b"__TOKENPH__", "•••••••• token set — type to replace" if TOKEN
+                              else "no token — anyone can write"),
+                             (b"__TOKENNOTE__", note)):
+                body = body.replace(key, esc(val))
+            body = body.replace(b"__INSTR_TOKEN__", json.dumps(TOKEN).encode() if TOKEN else b'""')
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if p == "/api/settings":
+            if not self._authed():
+                return self._deny()
+            return self._json({"lib": LIB, "music": MUSIC, "cache": CACHE,
+                               "ttl_hours": TTL_HOURS, "model": MODEL,
+                               "has_token": bool(TOKEN), "config_file": CONFIG_FILE})
         if p == "/api/cached":
             with LOCK:
                 done = [(jid, j) for jid, j in JOBS.items()
@@ -310,6 +408,61 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = urlparse(self.path).path
+        if p in ("/api/settings", "/api/settings/test"):
+            if not self._authed():
+                return self._deny()
+            try:
+                data = json.loads(self._body(65536) or b"{}")
+            except ValueError:
+                return self.send_error(400)
+            if p.endswith("/test"):
+                lib = (data.get("lib") or LIB).strip()
+                music = (data.get("music") or MUSIC or os.path.join(lib, "music")).strip()
+                return self._json(probe_library(lib, music))
+
+            errors = {}
+            lib = (data.get("lib") or "").strip()
+            music = (data.get("music") or "").strip()
+            cache = (data.get("cache") or "").strip()
+            model = (data.get("model") or "").strip()
+            if lib and not os.path.isdir(lib):
+                errors["lib"] = "directory not found"
+            if music and not os.path.isdir(music):
+                errors["music"] = "directory not found"
+            if cache:
+                try:
+                    os.makedirs(cache, exist_ok=True)
+                except OSError as exc:
+                    errors["cache"] = str(exc)
+            ttl = data.get("ttl_hours")
+            if ttl not in (None, ""):
+                try:
+                    if float(ttl) <= 0:
+                        errors["ttl_hours"] = "must be greater than 0"
+                except (TypeError, ValueError):
+                    errors["ttl_hours"] = "not a number"
+            if errors:
+                return self._json({"error": "validation failed", "fields": errors}, 400)
+
+            cfg = load_config()
+            if lib:
+                cfg["lib"] = lib
+            if music:
+                cfg["music"] = music
+            if cache:
+                cfg["cache"] = cache
+            if model:
+                cfg["model"] = model
+            if ttl not in (None, ""):
+                cfg["ttl_hours"] = float(ttl)
+            if "token" in data and data["token"] is not None:
+                cfg["token"] = str(data["token"])
+            save_config(cfg)
+            apply_config(cfg)
+            os.makedirs(CACHE, exist_ok=True)
+            return self._json({"ok": True, "lib": LIB, "music": MUSIC, "cache": CACHE,
+                               "ttl_hours": TTL_HOURS, "model": MODEL, "has_token": bool(TOKEN)})
+
         if p == "/api/jobs":
             if not self._authed():
                 return self._deny()
@@ -394,6 +547,7 @@ def sweep_loop() -> None:
 
 
 def main():
+    apply_config(load_config())
     os.makedirs(CACHE, exist_ok=True)
     load_jobs()
     sweep_cache()

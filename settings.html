@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Settings · Instrumental Selector</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg:#F5F5F3; --card:#FFFFFF; --line:#ECEBE8; --ink:#181818; --ink2:#1A1A1A;
+    --dim:#6E6E73; --label:#9A9A97; --coral:#F4415F; --teal:#2FC3A0; --black:#141414;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); padding-bottom:40px;
+         font:14px/1.5 -apple-system,"SF Pro Text",Inter,ui-sans-serif,system-ui,sans-serif;
+         -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:720px; margin:0 auto; padding:34px 28px 0; }
+  .head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+  h1 { font-size:28px; font-weight:700; letter-spacing:-.02em; margin:0; }
+  .sub { color:var(--dim); font-size:12px; margin-top:4px; }
+  a.back { color:var(--dim); font-size:13px; text-decoration:none; }
+  a.back:hover { color:var(--ink); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:18px; margin-top:16px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  .card h2 { font-size:13px; font-weight:600; margin:0 0 2px; letter-spacing:-.01em; }
+  .card p.hint { color:var(--dim); font-size:12px; margin:0 0 14px; }
+  label { display:block; font-size:11px; font-weight:500; letter-spacing:.06em;
+          text-transform:uppercase; color:var(--label); margin:14px 0 6px; }
+  label:first-of-type { margin-top:0; }
+  input { width:100%; padding:11px 13px; font-size:14px; color:var(--ink); background:#fff;
+          border:1px solid var(--line); border-radius:10px; font-family:ui-monospace,SFMono-Regular,monospace;
+          text-overflow:ellipsis; }
+  input::placeholder { color:#A9A9AE; }
+  input:focus { outline:none; border-color:#D8D7D2; box-shadow:0 0 0 3px rgba(20,20,20,.045); }
+  input.bad { border-color:#F0A6B0; background:#FFF7F8; }
+  .err { color:var(--coral); font-size:12px; margin-top:5px; min-height:0; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .actions { display:flex; gap:10px; align-items:center; margin-top:20px; flex-wrap:wrap; }
+  .btn { border:0; border-radius:999px; padding:11px 20px; font:600 13px/1 inherit; cursor:pointer; }
+  .btn.primary { background:var(--black); color:#fff; }
+  .btn.primary:hover { background:#000; }
+  .btn.ghost { background:#fff; color:#3F3F3D; border:1px solid #D2D2D7; padding:10px 18px; }
+  .btn.ghost:hover { background:#F7F6F4; border-color:#C4C4CA; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .result { margin-top:14px; font-size:13px; display:none; }
+  .result.on { display:block; }
+  .kv { display:flex; gap:8px; padding:4px 0; }
+  .kv span:first-child { color:var(--dim); min-width:110px; }
+  .good { color:var(--teal); font-weight:600; }
+  .bad { color:var(--coral); font-weight:600; }
+  .note { color:var(--dim); font-size:12px; margin-top:10px; line-height:1.45; }
+  code { font-family:ui-monospace,SFMono-Regular,monospace; font-size:12px; color:#3F3F3D; }
+  @media (max-width:560px){ .wrap{padding:24px 16px 0} .row2{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Settings</h1>
+      <div class="sub">Saved to <code id="cfgfile">config.json</code> — takes effect immediately, no restart.</div>
+    </div>
+    <a class="back" href="/">← Back</a>
+  </div>
+
+  <div class="card">
+    <h2>Library</h2>
+    <p class="hint">Point at the Navidrome data directory and the folder it scans. Nothing is written there.</p>
+    <label for="lib">Navidrome data dir</label>
+    <input id="lib" value="__LIB__" placeholder="/srv/data/navidrome" spellcheck="false">
+    <div class="err" id="lib_err"></div>
+    <label for="music">Music folder</label>
+    <input id="music" value="__MUSIC__" placeholder="/srv/data/navidrome/music" spellcheck="false">
+    <div class="err" id="music_err"></div>
+    <div class="actions">
+      <button class="btn ghost" id="test">Test connection</button>
+    </div>
+    <div class="result" id="testout"></div>
+  </div>
+
+  <div class="card">
+    <h2>Storage</h2>
+    <p class="hint">Where finished instrumentals live, and how long they stay.</p>
+    <div class="row2">
+      <div>
+        <label for="cache">Cache directory</label>
+        <input id="cache" value="__CACHE__" placeholder="./cache" spellcheck="false">
+        <div class="err" id="cache_err"></div>
+      </div>
+      <div>
+        <label for="ttl">Keep for (hours)</label>
+        <input id="ttl" type="number" min="0.5" step="1" value="__TTL__" placeholder="168">
+        <div class="err" id="ttl_hours_err"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Separation</h2>
+    <p class="hint">The model is downloaded and run by the worker, not here.</p>
+    <label for="model">Model filename</label>
+    <input id="model" value="__MODEL__" placeholder="UVR-MDX-NET-Inst_HQ_3.onnx" spellcheck="false">
+  </div>
+
+  <div class="card">
+    <h2>Security</h2>
+    <p class="hint">Shared secret for writes and worker endpoints. Leave blank to keep the current one.</p>
+    <label for="token">Access token</label>
+    <input id="token" type="password" value="" placeholder="__TOKENPH__" autocomplete="new-password">
+    <div class="note" id="tokennote">__TOKENNOTE__</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="save">Save settings</button>
+    <button class="btn ghost" id="reload">Reload</button>
+    <span class="err" id="save_err"></span>
+  </div>
+  <div class="result" id="saved"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+window.addEventListener('error', e => {
+  const el = document.getElementById('save_err');
+  if (el) el.textContent = 'JS error: ' + e.message;
+});
+const TOKEN = "__INSTR_TOKEN__";
+const AUTH = TOKEN ? { 'X-Instr-Token': TOKEN } : {};
+const api = (path, opts={}) => fetch(path, Object.assign({}, opts,
+  { headers: Object.assign({}, AUTH, opts.headers || {}) }));
+
+function fieldErrors(fields){
+  ['lib','music','cache','ttl_hours'].forEach(k => {
+    const el = $('#' + k + '_err'); if (el) el.textContent = (fields && fields[k]) || '';
+    const input = $('#' + (k === 'ttl_hours' ? 'ttl' : k));
+    if (input) input.classList.toggle('bad', !!(fields && fields[k]));
+  });
+}
+
+async function load(){
+  const s = await (await api('/api/settings')).json();
+  $('#lib').value = s.lib || '';
+  $('#music').value = s.music || '';
+  $('#cache').value = s.cache || '';
+  $('#ttl').value = s.ttl_hours ?? '';
+  $('#model').value = s.model || '';
+  $('#cfgfile').textContent = s.config_file || 'config.json';
+  $('#token').placeholder = s.has_token ? '(unchanged — token set)' : '(none set)';
+  $('#tokennote').innerHTML = s.has_token
+    ? 'A token is set. Anyone with it can queue work and use the worker endpoints.'
+    : 'No token set — fine on a trusted LAN, risky on a public address.';
+  fieldErrors({});
+}
+
+async function test(){
+  const btn = $('#test'); btn.disabled = true;
+  const out = $('#testout'); out.className = 'result on'; out.textContent = 'Testing…';
+  try {
+    const r = await (await api('/api/settings/test', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ lib: $('#lib').value.trim(), music: $('#music').value.trim() }) })).json();
+    const line = (k, v, ok) => `<div class="kv"><span>${k}</span><span class="${ok ? 'good':'bad'}">${v}</span></div>`;
+    out.innerHTML = line('Data dir', r.lib_ok ? 'ok' : 'missing', r.lib_ok)
+                  + line('Database', r.db_ok ? 'readable' : 'unreadable', r.db_ok)
+                  + line('Tracks', r.tracks, r.tracks > 0)
+                  + line('Music dir', r.music_ok ? 'ok' : 'missing', r.music_ok)
+                  + line('Path check', r.sample ? r.sample : '—', !!r.sample && r.errors.length === 0)
+                  + (r.errors.length ? `<div class="err">${r.errors.join('<br>')}</div>` : '');
+  } catch (e) {
+    out.innerHTML = `<span class="bad">Test failed: ${e}</span>`;
+  } finally { btn.disabled = false; }
+}
+
+async function save(){
+  const btn = $('#save'); btn.disabled = true;
+  $('#save_err').textContent = ''; $('#saved').className = 'result';
+  const body = {
+    lib: $('#lib').value.trim(), music: $('#music').value.trim(),
+    cache: $('#cache').value.trim(), model: $('#model').value.trim(),
+    ttl_hours: $('#ttl').value === '' ? null : Number($('#ttl').value),
+  };
+  const tok = $('#token').value;
+  if (tok !== '') body.token = tok;
+  try {
+    const res = await api('/api/settings', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const r = await res.json();
+    if (!res.ok) { fieldErrors(r.fields || {}); $('#save_err').textContent = r.error || 'failed'; return; }
+    fieldErrors({});
+    $('#token').value = '';
+    $('#saved').className = 'result on';
+    $('#saved').innerHTML = `<span class="good">Saved.</span> <span class="muted">` +
+      `${r.lib} · ${r.tracks ? '' : ''}cache ${r.cache} · TTL ${r.ttl_hours}h</span>`;
+    load();
+  } catch (e) {
+    $('#save_err').textContent = String(e);
+  } finally { btn.disabled = false; }
+}
+
+$('#test').onclick = test;
+$('#save').onclick = save;
+$('#reload').onclick = load;
+load();
+</script>
+</body>
+</html>

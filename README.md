@@ -25,6 +25,8 @@ Stem separation is CPU-hungry: a 2012-era 4-thread i3 needed **~28 min** for a 6
 - Results cached by track id, auto-deleted after a configurable TTL (default 7 days)
 - Queue survives server restarts; nothing is written into your music library
 
+![Settings](docs/settings.png)
+
 ## Requirements
 
 **Server** (Linux/macOS, any small box): Python 3.11+, read access to a Navidrome data directory.
@@ -36,10 +38,16 @@ Stem separation is CPU-hungry: a 2012-era 4-thread i3 needed **~28 min** for a 6
 ```bash
 git clone https://github.com/mmoolyaa/instrumental-selector.git
 cd instrumental-selector
-cp .env.example .env          # then edit INSTR_LIB / INSTR_MUSIC
-set -a; . ./.env; set +a
 python3 server.py             # http://127.0.0.1:8899
 ```
+
+First run defaults to `/srv/data/navidrome`. Everything else is configured in the browser:
+open **`/settings`** (gear icon, top right) and fill in the paths. The page has a
+**Test connection** button that verifies the data dir, opens `navidrome.db` read-only, counts
+tracks and resolves a sample path — so you find a wrong folder before saving it, not after.
+
+Settings are written to `config.json` next to `server.py` (gitignored) and apply immediately,
+no restart. Env vars below still work and act as the default for anything unset.
 
 Run it as a service:
 

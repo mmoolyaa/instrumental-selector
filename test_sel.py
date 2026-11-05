@@ -55,13 +55,33 @@ def req(path, data=None, raw=None, headers=None):
         return e.code, e.read(), dict(e.headers)
 
 
+def settings_test(tmp, lib):
+    """Settings page contract: read, probe, reject bad paths, persist good ones."""
+    s = json.loads(req("/api/settings")[1])
+    assert s["lib"] == lib and s["has_token"] is False, s
+
+    probe = json.loads(req("/api/settings/test", data={"lib": lib,
+                                                       "music": os.path.join(lib, "music")})[1])
+    assert probe["ok"] and probe["tracks"] == 1 and probe["sample"], probe
+
+    bad = req("/api/settings", data={"lib": "/nope/does/not/exist"})
+    assert bad[0] == 400 and "lib" in json.loads(bad[1])["fields"], bad
+
+    good = req("/api/settings", data={"ttl_hours": 48, "model": "custom.onnx"})
+    assert good[0] == 200, good
+    s2 = json.loads(req("/api/settings")[1])
+    assert s2["ttl_hours"] == 48 and s2["model"] == "custom.onnx", s2
+    assert os.path.isfile(os.path.join(tmp, "config.json")), "settings must persist"
+    print("settings assertions passed")
+
+
 def token_test(tmp):
     """With INSTR_TOKEN set, writes and worker endpoints require the header."""
     port = PORT + 7        # keep clear of 8898 (this test) and 8899 (a running instance)
     base = f"http://127.0.0.1:{port}"
     env = dict(os.environ, PORT=str(port), INSTR_LIB=os.path.join(tmp, "lib"),
                INSTR_CACHE=os.path.join(tmp, "cache2"), INSTR_JOBS=os.path.join(tmp, "jobs2.json"),
-               INSTR_TOKEN="s3cret")
+               INSTR_CONFIG=os.path.join(tmp, "config2.json"), INSTR_TOKEN="s3cret")
     srv = subprocess.Popen([sys.executable, os.path.join(ROOT, "server.py")], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:
@@ -104,7 +124,8 @@ def main():
     tmp = tempfile.mkdtemp(prefix="instr-test-")
     lib, src = make_lib(tmp)
     env = dict(os.environ, PORT=str(PORT), INSTR_LIB=lib,
-               INSTR_CACHE=os.path.join(tmp, "cache"), INSTR_JOBS=os.path.join(tmp, "jobs.json"))
+               INSTR_CACHE=os.path.join(tmp, "cache"), INSTR_JOBS=os.path.join(tmp, "jobs.json"),
+               INSTR_CONFIG=os.path.join(tmp, "config.json"))
     srv = subprocess.Popen([sys.executable, os.path.join(ROOT, "server.py")], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:
@@ -174,6 +195,7 @@ def main():
         assert st["state"] == "failed" and st["error"] == "boom", st
 
         print("all assertions passed")
+        settings_test(tmp, lib)
         token_test(tmp)
         return 0
     finally:
