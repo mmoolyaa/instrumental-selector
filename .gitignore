@@ -1,0 +1,20 @@
+# runtime state
+cache/
+jobs.json
+jobs.json.tmp
+models/
+*.mp3
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# local config
+.env
+worker.env
+
+# os
+.DS_Store
+Thumbs.db

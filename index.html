@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Instrumental Selector</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg:#F5F5F3; --card:#FFFFFF; --line:#ECEBE8; --line2:#F1F0ED;
+    --ink:#181818; --ink2:#1A1A1A; --dim:#8C8C89; --label:#9A9A97;
+    --coral:#F4415F; --teal:#2FC3A0; --black:#141414;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,"SF Pro Text",Inter,ui-sans-serif,system-ui,sans-serif;
+         -webkit-font-smoothing:antialiased; padding-bottom:120px; }
+  .wrap { max-width:780px; margin:0 auto; padding:34px 28px 0; }
+
+  /* header */
+  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+  h1 { font-size:28px; font-weight:700; letter-spacing:-.02em; margin:0; }
+  .sub { color:#6E6E73; font-size:12px; margin-top:4px; }
+  .pills { display:flex; gap:6px; align-items:center; padding-top:4px; }
+  .pill { border:0; border-radius:999px; padding:6px 14px; font:500 12px/1 inherit;
+          background:transparent; color:#8A8A88; cursor:default; }
+  .pill.on { background:var(--black); color:#fff; }
+  .status { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
+  .led { width:7px; height:7px; border-radius:50%; background:#D6D5D1; }
+  .led.up { background:var(--teal); }
+
+  /* stat cards */
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:22px 0 18px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:14px 16px; box-shadow:0 1px 2px rgba(0,0,0,.03);
+          display:flex; flex-direction:column; }
+  .stat .lab { font-size:10px; font-weight:500; letter-spacing:.08em; color:var(--label);
+               text-transform:uppercase; }
+  .stat .val { font-size:23px; font-weight:700; letter-spacing:-.02em;
+               line-height:30px; height:30px; margin-top:4px; white-space:nowrap;
+               overflow:hidden; text-overflow:ellipsis; }
+  .stat .cap { font-size:11px; color:#6E6E73; margin-top:2px; }
+  .stat .val.warn { color:var(--coral); }
+
+  /* search */
+  .search { position:relative; }
+  #q { width:100%; padding:14px 44px; font-size:15px; color:var(--ink); background:var(--card);
+       border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  #q::placeholder { color:#B5B5B2; }
+  #q:focus { outline:none; border-color:#D8D7D2; box-shadow:0 0 0 3px rgba(20,20,20,.045); }
+  .ico { position:absolute; left:15px; top:15px; color:#A5A5A2; pointer-events:none;
+         display:flex; }
+  #q { padding-left:46px; }
+  #clear { position:absolute; right:9px; top:9px; width:30px; height:30px; border:0;
+           background:transparent; color:#B5B5B2; font-size:18px; cursor:pointer; border-radius:8px;
+           display:none; }
+  #clear:hover { background:#F1F0ED; color:var(--ink); }
+
+  .hintline { color:#6E6E6B; font-size:12px; margin:10px 2px 0; min-height:16px; }
+  .sectionlab { font-size:13px; font-weight:600; color:var(--ink2); margin:24px 2px 10px;
+                letter-spacing:-.01em; }
+  :focus-visible { outline:2px solid #141414; outline-offset:2px; border-radius:8px; }
+
+  /* results */
+  #list, #recent { list-style:none; margin:10px 0 0; padding:0; background:var(--card);
+          border:1px solid var(--line); border-radius:12px; overflow:hidden;
+          box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  #list:empty, #recent:empty { display:none; }
+  li { display:flex; gap:12px; align-items:center; padding:11px 16px; cursor:pointer;
+       border-bottom:1px solid var(--line2); }
+  li:last-child { border-bottom:0; }
+  li:hover { background:#FAFAF9; }
+  li.sel { background:#FFF5F6; box-shadow:inset 3px 0 0 var(--coral); }
+  .av { width:20px; height:20px; border-radius:6px; flex:0 0 20px; display:flex;
+        align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700;
+        line-height:1; }
+  .openpill { font-size:11px; font-weight:600; color:#3F3F3D; border:1px solid #D2D2D7;
+              border-radius:999px; padding:4px 11px; background:#FCFCFB; }
+  li:hover .openpill { border-color:#D8D7D2; background:#F7F6F4; }
+  .t { flex:1; min-width:0; }
+  .t b { font-weight:500; font-size:14px; line-height:1.35; display:block; overflow:hidden;
+         text-overflow:ellipsis; white-space:nowrap; }
+  .t span { color:#6E6E6B; font-size:12px; line-height:1.4; display:block; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap; }
+  .d { color:#A5A5A2; font-size:11px; font-variant-numeric:tabular-nums; }
+  .selmark { color:var(--coral); font-size:12px; font-weight:600; opacity:0; }
+  li.sel .selmark { opacity:1; }
+
+  /* job card */
+  #job { background:var(--card); border:1px solid var(--line); border-radius:12px;
+         padding:18px; margin-bottom:16px; display:none; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  #job.on { display:block; }
+  .jobtop { display:flex; align-items:center; gap:10px; }
+  .lab { font-size:10px; font-weight:500; letter-spacing:.08em; color:var(--label);
+         text-transform:uppercase; }
+  .step { font-size:19px; font-weight:700; letter-spacing:-.02em; margin-top:3px; }
+  .muted { color:var(--dim); font-size:12px; margin-top:4px; }
+  .spin { width:16px; height:16px; border:2px solid #EDECE9; border-top-color:var(--coral);
+          border-radius:50%; animation:sp .8s linear infinite; flex:0 0 16px; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .ok { color:var(--teal); font-weight:700; }
+  .bad { color:var(--coral); font-weight:700; }
+  audio { width:100%; margin-top:14px; height:38px; }
+  .tiny { font-size:11px; color:#A5A5A2; margin-top:10px; }
+
+  /* bottom action bar */
+  #bar { position:fixed; left:0; right:0; bottom:0; display:none;
+         padding:12px 20px calc(12px + env(safe-area-inset-bottom));
+         background:rgba(245,245,243,.86); backdrop-filter:blur(12px); }
+  #bar.on { display:block; }
+  .barin { max-width:780px; margin:0 auto; display:flex; gap:10px; align-items:center;
+           background:var(--card); border:1px solid var(--line); border-radius:14px;
+           padding:10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.07); }
+  .barin[hidden] { display:none; }
+  .barlabel { flex:1; min-width:0; }
+  .barlabel small { display:block; color:var(--label); font-size:10px; font-weight:500;
+                    letter-spacing:.08em; text-transform:uppercase; }
+  .barlabel b { font-weight:600; font-size:13px; display:block; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap; }
+  .btn { border:0; border-radius:999px; padding:10px 18px; font:600 13px/1 inherit;
+         cursor:pointer; white-space:nowrap; text-decoration:none; display:inline-block;
+         text-align:center; }
+  .btn.primary { background:var(--black); color:#fff; }
+  .btn.primary:hover { background:#000; }
+  .btn.ghost { background:transparent; color:#6E6E6B; }
+  .btn.ghost:hover { background:#F1F0ED; }
+  .btn:disabled { opacity:.45; cursor:default; }
+
+  @media (max-width:640px){
+    .wrap { padding:24px 16px 0; }
+    h1 { font-size:24px; }
+    .stats { grid-template-columns:repeat(2,1fr); }
+    .d, .pill:not(.on) { display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Instrumental Selector</h1>
+      <div class="sub">Local patterns, track selection, and stem split.</div>
+    </div>
+    <div class="pills"></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="lab">Library</div><div class="val" id="sTracks">—</div><div class="cap">tracks indexed</div></div>
+    <div class="stat"><div class="lab">Cached</div><div class="val" id="sCached">—</div><div class="cap">instrumentals ready</div></div>
+    <div class="stat"><div class="lab">Queue</div><div class="val" id="sQueue">—</div><div class="cap" id="sQueueCap">waiting</div></div>
+    <div class="stat"><div class="lab">Worker</div><div class="val" id="sWorker">—</div><div class="cap" id="sWorkerCap">laptop</div></div>
+  </div>
+
+  <div class="search">
+    <span class="ico" aria-hidden="true">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    </span>
+    <input id="q" placeholder="Search artist, album or song…" autocomplete="off" autofocus>
+    <button id="clear" title="Clear">×</button>
+  </div>
+
+  <div class="hintline" id="hintline">Type at least 2 characters.</div>
+
+  <div id="recentWrap">
+    <div class="sectionlab">Recently made</div>
+    <ul id="recent"></ul>
+  </div>
+
+  <div id="job">
+    <div class="lab" id="jobnote">Status</div>
+    <div class="jobtop"><div id="icon"></div><div class="step" id="step"></div></div>
+    <div class="muted" id="detail"></div>
+    <audio id="player" controls hidden></audio>
+    <div class="tiny" id="tiny"></div>
+  </div>
+
+  <ul id="list"></ul>
+</div>
+
+<div id="bar">
+  <div class="barin" id="barSel">
+    <div class="barlabel"><small>Selected</small><b id="selname"></b></div>
+    <button class="btn ghost" id="cancel">Cancel</button>
+    <button class="btn primary" id="confirm">Create instrumental</button>
+  </div>
+  <div class="barin" id="barJob" hidden>
+    <div class="barlabel"><small id="jobnoteBar">Ready</small><b id="jobname"></b></div>
+    <button class="btn ghost" id="barAgain">Search again</button>
+    <a class="btn primary" id="barDl" href="#">Download MP3</a>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const TOKEN = "__INSTR_TOKEN__";                 // filled in by the server when INSTR_TOKEN is set
+const AUTH = TOKEN ? { 'X-Instr-Token': TOKEN } : {};
+const state = { rows:[], sel:null, jid:null, timer:null, t0:0, deb:null };
+const PALETTE = ['#F4415F','#F0B429','#2FC3A0','#7C5CFF','#F4633A','#3B82F6'];
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = s => { s = Math.round(s||0); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+const setHint = t => { $('#hintline').textContent = t; };
+const colorFor = name => PALETTE[[...(name||'x')].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
+
+async function loadStats(){
+  try {
+    const s = await (await fetch('/api/stats')).json();
+    $('#sTracks').textContent = s.tracks.toLocaleString();
+    $('#sCached').textContent = s.cached;
+    $('#sQueue').textContent = s.queued + s.running;
+    $('#sQueue').className = 'val' + (s.queued + s.running ? ' warn' : '');
+    $('#sQueueCap').textContent = s.running ? 'separating now' : 'waiting';
+    $('#sWorker').textContent = s.worker_online ? 'Online' : 'Offline';
+    $('#sWorkerCap').textContent = s.worker_online ? 'polling' : 'start the .bat';
+    $('#sWorker').className = 'val' + (s.worker_online ? '' : ' warn');
+  } catch (e) { /* server hiccup, keep last values */ }
+}
+
+async function loadRecent(){
+  try {
+    const rows = await (await fetch('/api/cached')).json();
+    if (!rows.length) { $('#recent').innerHTML = ''; $('#recentWrap').style.display = 'none'; return; }
+    $('#recentWrap').style.display = '';
+    $('#recent').innerHTML = rows.map(r => {
+      const name = r.name.replace(/\.mp3$/, '').replace(/ \(Instrumental\)$/, '');
+      return `<li data-jid="${r.jid}">
+        <div class="av" style="background:var(--black)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+        </div>
+        <div class="t"><b>${esc(name)}</b><span>cached instrumental</span></div>
+        <div class="openpill">Open</div>
+      </li>`;
+    }).join('');
+    document.querySelectorAll('#recent li[data-jid]').forEach(li =>
+      li.onclick = () => openCached(li.dataset.jid, li.querySelector('b').textContent));
+  } catch (e) { $('#recentWrap').style.display = 'none'; }
+}
+
+function openCached(jid, name){
+  state.jid = jid; state.t0 = Date.now();
+  showJob('done', name, 'Cached — ready now');
+  const a = $('#player'); a.src = '/api/audio/' + jid; a.hidden = false;
+  $('#jobnoteBar').textContent = 'Ready';
+  $('#jobname').textContent = name;
+  $('#barDl').href = '/api/download/' + jid;
+  $('#barDl').hidden = false;
+  $('#barAgain').textContent = 'Search again';
+  $('#barSel').hidden = true; $('#barJob').hidden = false;
+  $('#bar').classList.add('on');
+}
+
+async function search(){
+  const q = $('#q').value.trim();
+  $('#clear').style.display = q ? 'block' : 'none';
+  if (q.length < 2) {
+    state.rows = []; render(); setHint('Type at least 2 characters.');
+    $('#recentWrap').style.display = ''; loadRecent(); return;
+  }
+  $('#recentWrap').style.display = 'none';
+  const rows = await (await fetch('/api/tracks?q=' + encodeURIComponent(q))).json();
+  state.rows = rows;
+  render();
+  setHint(rows.length ? rows.length + ' result' + (rows.length === 1 ? '' : 's')
+                      : 'Nothing matches “' + q + '”.');
+}
+
+function render(){
+  $('#list').innerHTML = state.rows.map(t => {
+    const sel = state.sel && state.sel.id === t.id;
+    return `<li data-id="${t.id}" class="${sel ? 'sel' : ''}">
+      <div class="av" style="background:${colorFor(t.artist)}">${esc((t.artist||'?')[0].toUpperCase())}</div>
+      <div class="t"><b>${esc(t.title)}</b><span>${esc(t.artist)} — ${esc(t.album)}</span></div>
+      <div class="selmark">selected</div>
+      <div class="d">${fmt(t.duration)}</div>
+    </li>`;
+  }).join('');
+  document.querySelectorAll('#list li[data-id]').forEach(li =>
+    li.onclick = () => select(state.rows.find(t => t.id === li.dataset.id)));
+}
+
+function select(track){
+  if (!track) return;
+  state.sel = track;
+  render();
+  $('#selname').textContent = track.artist + ' — ' + track.title;
+  $('#barSel').hidden = false;
+  $('#barJob').hidden = true;
+  $('#bar').classList.add('on');
+  $('#confirm').disabled = false;
+}
+
+function clearSel(){ state.sel = null; render(); $('#bar').classList.remove('on'); }
+
+async function confirm(){
+  if (!state.sel) return;
+  $('#confirm').disabled = true;
+  state.t0 = Date.now();
+  const j = await (await fetch('/api/jobs', { method:'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, AUTH),
+      body: JSON.stringify({ id: state.sel.id }) })).json();
+  if (!j.jid) { $('#bar').classList.remove('on'); showJob('error','Could not queue this track', j.error || ''); return; }
+  state.jid = j.jid;
+  $('#bar').classList.remove('on');
+  showJob('wait', state.sel.title, 'Checking…');
+  window.scrollTo({ top:0, behavior:'smooth' });
+  clearInterval(state.timer);
+  state.timer = setInterval(poll, 2000);
+  poll();
+}
+
+function showJob(kind, title, detail){
+  $('#job').classList.add('on');
+  $('#list').style.display = 'none';
+  $('#hintline').style.display = 'none';
+  $('#recentWrap').style.display = 'none';
+  $('#player').hidden = true;
+  $('#tiny').textContent = '';
+  $('#icon').innerHTML = kind === 'done' ? '<span class="ok">✓</span>'
+                      : kind === 'error' ? '<span class="bad">✕</span>'
+                      : '<div class="spin"></div>';
+  $('#jobnote').textContent = kind === 'done' ? 'Ready' : kind === 'error' ? 'Failed' : 'Status';
+  $('#step').textContent = title;
+  $('#detail').textContent = detail || '';
+}
+
+const elapsed = () => Math.max(0, Math.round((Date.now() - state.t0)/1000));
+
+async function poll(){
+  const j = await (await fetch('/api/job/' + state.jid)).json();
+  const title = state.sel ? state.sel.title : 'Instrumental';
+  if (j.state === 'done') {
+    clearInterval(state.timer);
+    showJob('done', title, 'Finished in ' + elapsed() + 's');
+    const a = $('#player'); a.src = '/api/audio/' + state.jid; a.hidden = false;
+    $('#jobnoteBar').textContent = 'Ready · ' + elapsed() + 's';
+    $('#jobname').textContent = title;
+    $('#barDl').href = '/api/download/' + state.jid;
+    $('#barDl').hidden = false;
+    $('#barAgain').textContent = 'Search again';
+    $('#barSel').hidden = true; $('#barJob').hidden = false;
+    $('#bar').classList.add('on');
+    $('#tiny').textContent = 'Ask for the same track again and it is instant — it is cached.';
+    loadStats();
+  } else if (j.state === 'failed') {
+    clearInterval(state.timer);
+    showJob('error', 'Separation failed', j.error || 'unknown error');
+    $('#jobnoteBar').textContent = 'Error';
+    $('#jobname').textContent = 'Separation failed';
+    $('#barDl').hidden = true;
+    $('#barAgain').textContent = 'Try another';
+    $('#barSel').hidden = true; $('#barJob').hidden = false;
+    $('#bar').classList.add('on');
+    loadStats();
+  } else if (j.state === 'running') {
+    showJob('wait', title, 'Separating on the laptop · ' + elapsed() + 's elapsed (usually 1–5 min)');
+  } else {
+    showJob('wait', title, 'Queued · waiting for the laptop worker (' + elapsed() + 's)');
+    $('#tiny').textContent = 'Laptop asleep? Start start-worker.bat there — this picks up on its own.';
+  }
+}
+
+function reset(){
+  clearInterval(state.timer);
+  state.jid = null; state.sel = null;
+  $('#job').classList.remove('on');
+  $('#bar').classList.remove('on');
+  $('#barJob').hidden = true; $('#barSel').hidden = false;
+  $('#list').style.display = ''; $('#hintline').style.display = '';
+  $('#recentWrap').style.display = '';
+  $('#q').value = ''; $('#clear').style.display = 'none';
+  state.rows = []; render(); setHint('Type at least 2 characters.');
+  $('#q').focus(); loadStats(); loadRecent();
+}
+
+$('#barAgain').onclick = reset;
+$('#confirm').onclick = confirm;
+$('#cancel').onclick = clearSel;
+$('#clear').onclick = () => { $('#q').value = ''; search(); $('#q').focus(); };
+$('#q').addEventListener('input', () => { clearTimeout(state.deb); state.deb = setTimeout(search, 220); });
+$('#q').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && state.sel) { e.preventDefault(); confirm(); }
+  else if (e.key === 'Enter' && state.rows.length === 1) { e.preventDefault(); select(state.rows[0]); }
+  else if (e.key === 'Escape') clearSel();
+});
+loadStats();
+loadRecent();
+setInterval(loadStats, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[Unit]
+Description=instrumental-selector (Navidrome search + separation queue)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/instrumental-selector
+EnvironmentFile=-%h/instrumental-selector/.env
+ExecStart=/usr/bin/python3 server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

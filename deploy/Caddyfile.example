@@ -1,0 +1,12 @@
+# Replace the hostname and the upstream address.
+instrumental.example.com {
+    encode zstd gzip
+
+    header {
+        X-Frame-Options SAMEORIGIN
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    reverse_proxy 127.0.0.1:8899
+}
