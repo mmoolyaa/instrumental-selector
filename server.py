@@ -94,6 +94,9 @@ def probe_library(lib: str, music: str) -> dict:
 JOBS: dict[str, dict] = {}
 LOCK = threading.Lock()
 LAST_WORKER = 0.0
+# A worker that dies mid-job would otherwise leave the job "running" forever.
+# Anything claimed longer ago than this is assumed dead and goes back to the queue.
+LEASE_S = float(os.environ.get("INSTR_LEASE_MINUTES", "45")) * 60
 
 
 def stats() -> dict:
@@ -210,6 +213,7 @@ def load_jobs() -> None:
         job["out"] = os.path.join(CACHE, cache_key(job["media_id"]) + ".mp3")
         if job["state"] == "running":       # server restarted mid-job
             job["state"] = "queued"
+            job["claimed_at"] = None
         JOBS[jid] = job
 
 
@@ -237,6 +241,7 @@ def next_job() -> dict | None:
         for jid, job in JOBS.items():
             if job["state"] == "queued":
                 job["state"] = "running"
+                job["claimed_at"] = time.time()
                 save_jobs()
                 path = media_path(job["media_id"])
                 if path is None:
@@ -508,8 +513,33 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
 
+def requeue_orphans() -> int:
+    """Return jobs whose worker vanished to the queue.
+
+    A claim is a lease: the worker refreshes nothing, so a job held longer than
+    LEASE_S means the process died (torch segfault, reboot, closed laptop lid).
+    ponytail: no heartbeat, so the ceiling is one job running longer than the
+    lease. Add a worker heartbeat before supporting jobs over ~45 min.
+    """
+    now = time.time()
+    n = 0
+    with LOCK:
+        for job in JOBS.values():
+            if job["state"] == "running" and now - float(job.get("claimed_at") or 0) > LEASE_S:
+                job["state"] = "queued"
+                job["claimed_at"] = None
+                n += 1
+        if n:
+            save_jobs()
+    return n
+
+
 def sweep_cache() -> int:
-    """Delete cached instrumentals older than TTL_HOURS and forget their jobs."""
+    """Delete cached instrumentals older than TTL_HOURS and forget finished jobs.
+
+    Only finished jobs are eligible: a queued or running job has no output file
+    yet, and forgetting it would silently destroy the queue.
+    """
     if not os.path.isdir(CACHE):
         return 0
     cutoff = time.time() - TTL_HOURS * 3600
@@ -525,22 +555,30 @@ def sweep_cache() -> int:
                     removed += 1
             except OSError:
                 continue
-        for jid in [j for j, job in JOBS.items() if not os.path.isfile(job["out"])]:
+        gone = [j for j, job in JOBS.items()
+                if job["state"] in ("done", "failed") and not os.path.isfile(job["out"])]
+        for jid in gone:
             del JOBS[jid]
-        if removed:
+        if removed or gone:
             save_jobs()
     return removed
 
 
 def sweep_loop() -> None:
+    last_sweep = 0.0
     while True:
         try:
-            n = sweep_cache()
+            n = requeue_orphans()
             if n:
-                print(f"cache sweep: removed {n} file(s) older than {TTL_HOURS:g}h", flush=True)
+                print(f"requeued {n} orphaned job(s) past the {LEASE_S / 60:g} min lease", flush=True)
+            if time.time() - last_sweep > 3600:
+                last_sweep = time.time()
+                n = sweep_cache()
+                if n:
+                    print(f"cache sweep: removed {n} file(s) older than {TTL_HOURS:g}h", flush=True)
         except Exception as exc:                       # noqa: BLE001 - never kill the thread
-            print(f"cache sweep failed: {exc}", flush=True)
-        time.sleep(3600)
+            print(f"sweep failed: {exc}", flush=True)
+        time.sleep(60)
 
 
 def main():

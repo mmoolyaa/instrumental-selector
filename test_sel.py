@@ -128,6 +128,41 @@ def token_test(tmp):
         srv.wait(timeout=10)
 
 
+def durability_test(tmp):
+    """The sweep must never eat a job that has no output file yet, and a dead
+    worker's claim must expire instead of jamming the queue forever."""
+    os.environ.update(INSTR_CACHE=os.path.join(tmp, "cache3"),
+                      INSTR_JOBS=os.path.join(tmp, "jobs3.json"),
+                      INSTR_CONFIG=os.path.join(tmp, "config3.json"))
+    sys.path.insert(0, ROOT)
+    import importlib
+    srv = importlib.import_module("server")
+    importlib.reload(srv)
+    srv.apply_config({})
+    os.makedirs(srv.CACHE, exist_ok=True)
+
+    def job(state, name, claimed=None):
+        return {"state": state, "media_id": "mf1", "name": name,
+                "out": os.path.join(srv.CACHE, name), **({"claimed_at": claimed} if claimed else {})}
+
+    srv.JOBS.clear()
+    srv.JOBS.update(q1=job("queued", "a.mp3"),
+                    r1=job("running", "b.mp3", time.time()),
+                    d1=job("done", "c.mp3"),
+                    f1=job("failed", "d.mp3"))
+    srv.sweep_cache()
+    assert "q1" in srv.JOBS and "r1" in srv.JOBS, "queued/running jobs must survive the sweep"
+    assert "d1" not in srv.JOBS and "f1" not in srv.JOBS, "finished jobs with no file must be pruned"
+
+    # an expired claim goes back to the queue; a fresh one is untouched
+    srv.JOBS["r1"]["claimed_at"] = time.time() - srv.LEASE_S - 60
+    srv.JOBS["r2"] = job("running", "e.mp3", time.time())
+    assert srv.requeue_orphans() == 1
+    assert srv.JOBS["r1"]["state"] == "queued", srv.JOBS["r1"]
+    assert srv.JOBS["r2"]["state"] == "running", "fresh claims must not be requeued"
+    print("queue durability assertions passed")
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="instr-test-")
     lib, src = make_lib(tmp)
@@ -205,6 +240,7 @@ def main():
         print("all assertions passed")
         settings_test(tmp, lib)
         token_test(tmp)
+        durability_test(tmp)
         return 0
     finally:
         srv.terminate()

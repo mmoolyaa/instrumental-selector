@@ -23,7 +23,8 @@ Stem separation is CPU-hungry: a 2012-era 4-thread i3 needed **~28 min** for a 6
 - Level-matched output (gain computed from the original's integrated loudness)
 - 48 kHz / 320 kbps MP3, single lossy encode from the separated stem
 - Results cached by track id, auto-deleted after a configurable TTL (default 7 days)
-- Queue survives server restarts; nothing is written into your music library
+- Queue survives server restarts; a worker that dies mid-job is detected and the job returns to the queue
+- Nothing is written into your music library
 
 ![Settings](docs/settings.png)
 
@@ -99,6 +100,7 @@ On Windows, copy `deploy/start-worker.bat` next to `worker.py`, edit `INSTR_SERV
 | `INSTR_CACHE` | `./cache` | server | Where finished MP3s live |
 | `INSTR_JOBS` | `./jobs.json` | server | Queue state file |
 | `INSTR_TTL_HOURS` | `168` | server | Delete cached MP3s older than this |
+| `INSTR_LEASE_MINUTES` | `45` | server | A job held by a worker for longer than this is treated as abandoned and requeued |
 | `INSTR_TOKEN` | *(empty)* | both | Shared secret; when set, writes and worker endpoints require `X-Instr-Token` |
 | `PORT` | `8899` | server | Listen port |
 | `INSTR_SERVER` | `http://127.0.0.1:8899` | worker | Base URL of the server |
